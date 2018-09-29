@@ -79,7 +79,7 @@ void loop() {
 // Functions
 String BuildSignature(String stringToHash, String sharedKey)
 {
-  String sharedKeyDecoded = rbase64.decode(sharedKey);
+  String sharedKeyDecoded = (String)rbase64.decode(sharedKey);
   byte keyBytes[sharedKeyDecoded.length()];
   for (int i = 0; i < sharedKeyDecoded.length(); i++)
   {
@@ -90,7 +90,7 @@ String BuildSignature(String stringToHash, String sharedKey)
   Sha256.print(stringToHash);
   uint8_t *hash;
   hash = Sha256.resultHmac();
-  return rbase64.encode(hash, 32);
+  return (String)rbase64.encode(hash, 32);
 }
 
 int PostOMSData(String customerId, String sharedKey, String PostData, String logType, String timeGeneratedField, String fingerPrint)
