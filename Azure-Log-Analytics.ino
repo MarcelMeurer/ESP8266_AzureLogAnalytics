@@ -8,14 +8,15 @@
 #include <TimeLib.h>
 
 // WiFi settings
-const char* ssid = "ssid";
-const char* password = "WiFi Password";
+const char* ssid = "...";
+const char* password = "...";
 
 // Azure Log Analytics
-const String CustomerId = "0438............";
-const String SharedKey = "e5IL...........==";
-const String LogType = "ITPC_SensorData";
-const String AzureLASSLFingerPrint = "ef e8 b5 0b 72 3e 4d 08 39 7d 39 28 66 11 0e 8f fa 9d bb 10"; // Warning: will changed in April 2017
+const String CustomerId = "...";
+const String SharedKey = "....==";
+const String LogType = "IoT_Data";
+
+const String AzureLASSLFingerPrint = "93 D9 CE 5E F8 75 E5 A4 83 E0 8A 20 F1 BB 75 5D F5 0B 31 97";
 
 // DHT Sensor setting - from: https://learn.adafruit.com/esp8266-temperature-slash-humidity-webserver/code
 #define DHTTYPE DHT22
@@ -57,6 +58,8 @@ void loop() {
     previousMillis = currentMillis;
     humidity = dht.readHumidity();          // Read humidity (percent)
     temp = dht.readTemperature(false);     // Read temperature as Fahrenheit
+
+    //humidity=34; temp=21;
     // Check if any reads failed and exit early (to try again).
     if (isnan(humidity) || isnan(temp)) {
       Serial.println("Failed to read from DHT sensor!");
@@ -68,6 +71,8 @@ void loop() {
       Serial.println(PostData);
       // Send data to cloud
       int postReturn = PostOMSData(CustomerId, SharedKey, PostData, LogType, "---", AzureLASSLFingerPrint);
+      Serial.print("Return code: ");
+      Serial.println(postReturn);
     }
   }
   Serial.print("Waiting...");
@@ -79,23 +84,33 @@ void loop() {
 // Functions
 String BuildSignature(String stringToHash, String sharedKey)
 {
-  String sharedKeyDecoded = (String)rbase64.decode(sharedKey);
-  byte keyBytes[sharedKeyDecoded.length()];
-  for (int i = 0; i < sharedKeyDecoded.length(); i++)
+  char str_array[sharedKey.length()-1];
+  sharedKey.toCharArray(str_array, sharedKey.length()-1);
+  size_t decLen=rbase64_dec_len(str_array,sharedKey.length()-1);
+
+  char output[decLen];
+  rbase64_decode(output, str_array, sharedKey.length()-1);
+  //Serial.print("COUNT: ");
+  //Serial.println(decLen);
+  
+  byte keyBytes[decLen-1];
+  for (int i = 0; i < decLen-1; i++)
   {
-    keyBytes[i] = (int)sharedKeyDecoded[i];
-  }
+    //Serial.println((int)output[i]);
+    keyBytes[i] = (int)output[i];
+  }  
   Sha256.init();
   Sha256.initHmac(keyBytes, sizeof(keyBytes));
   Sha256.print(stringToHash);
   uint8_t *hash;
   hash = Sha256.resultHmac();
-  return (String)rbase64.encode(hash, 32);
+  rbase64.encode(hash, 32);
+  return rbase64.result();
 }
 
 int PostOMSData(String customerId, String sharedKey, String PostData, String logType, String timeGeneratedField, String fingerPrint)
 {
-  RFC1123DateString = GetRFC1123DateString(RFC1123DateString);
+  RFC1123DateString = GetRFC1123DateString(RFC1123DateString); 
   String method = "POST";
   String contentType = "application/json";
   String resource = "/api/logs";
@@ -103,8 +118,8 @@ int PostOMSData(String customerId, String sharedKey, String PostData, String log
   String xHeaders = "x-ms-date:" + rfc1123date;
   String contentLength = (String) PostData.length();
   String stringToHash = method + "\n" + contentLength + "\n" + contentType + "\n" + xHeaders + "\n" + resource;
-
   String signature = "SharedKey " + customerId + ":" + BuildSignature(stringToHash, sharedKey);
+  Serial.println("Signature: "+signature);
   String uri = "https://" + customerId + ".ods.opinsights.azure.com" + resource + "?api-version=2016-04-01";
   Serial.println("Upload data to:");
   Serial.println(uri);
@@ -119,9 +134,13 @@ int PostOMSData(String customerId, String sharedKey, String PostData, String log
   http.addHeader("x-ms-date", rfc1123date);
   http.addHeader("time-generated-field", timeGeneratedField);
   int returnCode = http.POST(PostData);
-  if (returnCode < 0)
+
+  if (returnCode != 200)
   {
     Serial.println("RestPostData: Error sending data to Log Analytics: " + String(http.errorToString(returnCode).c_str()));
+    String payload = http.getString();   
+    Serial.println(payload); 
+    Serial.println(returnCode);
   } else
   {
     http.end();
@@ -203,4 +222,3 @@ String GetRFC1123DateString(String LastDate)
   client.stop();
   return rfc1123date;
 }
-
